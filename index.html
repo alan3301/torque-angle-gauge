@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#10141c" />
+  <title>Torque Angle Gauge</title>
+  <style>
+    :root{
+      --bg:#0b0f15;
+      --panel:#141a23;
+      --panel2:#1a2230;
+      --text:#f3f7fb;
+      --muted:#8fa0b5;
+      --accent:#58a6ff;
+      --accent2:#7ee787;
+      --warn:#f2cc60;
+      --danger:#ff7b72;
+      --border:rgba(255,255,255,.09);
+      --shadow:0 14px 40px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      min-height:100%;
+      background:
+        radial-gradient(circle at 50% -20%, rgba(88,166,255,.18), transparent 35%),
+        linear-gradient(180deg,#0d121a,#090c12 70%);
+      color:var(--text);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      overscroll-behavior:none;
+    }
+    body{
+      min-height:100vh;
+      padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom);
+    }
+    button,input,select{font:inherit}
+    button{touch-action:manipulation}
+    .app{
+      width:min(760px,100%);
+      margin:0 auto;
+      padding:14px 0 28px;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .brand h1{
+      margin:0;
+      font-size:clamp(1.2rem,4vw,1.65rem);
+      letter-spacing:.01em;
+    }
+    .brand p{
+      margin:3px 0 0;
+      color:var(--muted);
+      font-size:.86rem;
+    }
+    .status{
+      display:flex;
+      align-items:center;
+      gap:7px;
+      color:var(--muted);
+      font-size:.82rem;
+      white-space:nowrap;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:50%;
+      background:#66788e;
+      box-shadow:0 0 0 4px rgba(102,120,142,.12);
+    }
+    .dot.live{background:var(--accent2);box-shadow:0 0 0 4px rgba(126,231,135,.13)}
+    .dot.bad{background:var(--danger);box-shadow:0 0 0 4px rgba(255,123,114,.13)}
+    .card{
+      background:linear-gradient(180deg,rgba(25,33,45,.96),rgba(17,23,32,.96));
+      border:1px solid var(--border);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+    }
+    .gauge{
+      padding:18px;
+      position:relative;
+      overflow:hidden;
+    }
+    .ring{
+      width:min(78vw,400px);
+      aspect-ratio:1;
+      margin:4px auto 0;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      position:relative;
+      background:
+        radial-gradient(circle at center, #111720 57%, transparent 58%),
+        conic-gradient(var(--accent) var(--progress,0deg), rgba(255,255,255,.07) 0);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.05), 0 0 60px rgba(88,166,255,.08);
+      transition:background .08s linear;
+    }
+    .ring::after{
+      content:"";
+      position:absolute;inset:7%;
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,.06);
+      pointer-events:none;
+    }
+    .readout{text-align:center;z-index:2}
+    .angle{
+      font-size:clamp(4rem,19vw,7rem);
+      font-weight:800;
+      letter-spacing:-.055em;
+      line-height:.9;
+      font-variant-numeric:tabular-nums;
+    }
+    .degree{font-size:.42em;vertical-align:top;margin-left:.03em;color:var(--muted)}
+    .targetline{
+      margin-top:12px;
+      color:var(--muted);
+      font-size:1rem;
+    }
+    .targetline strong{color:var(--text)}
+    .remaining{
+      margin-top:6px;
+      font-size:.9rem;
+      color:var(--muted);
+    }
+    .remaining.good{color:var(--accent2)}
+    .remaining.warn{color:var(--warn)}
+    .remaining.done{color:var(--danger);font-weight:700}
+    .metrics{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:8px;
+      margin-top:15px;
+    }
+    .metric{
+      background:rgba(255,255,255,.035);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+      padding:10px;
+      text-align:center;
+    }
+    .metric span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:3px}
+    .metric strong{font-variant-numeric:tabular-nums;font-size:.97rem}
+    .actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin-top:14px;
+    }
+    .btn{
+      border:0;
+      border-radius:15px;
+      padding:15px 14px;
+      font-weight:750;
+      color:white;
+      background:#263246;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+      cursor:pointer;
+    }
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg,#2f8df4,#1f6fd1)}
+    .btn.zero{background:linear-gradient(180deg,#2fbc72,#218a55)}
+    .btn.danger{background:linear-gradient(180deg,#d95d57,#a83e39)}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .section{
+      margin-top:12px;
+      padding:16px;
+    }
+    .section h2{
+      margin:0 0 12px;
+      font-size:1rem;
+    }
+    .target-controls{
+      display:grid;
+      grid-template-columns:1fr 118px;
+      gap:12px;
+      align-items:center;
+    }
+    input[type=range]{width:100%;accent-color:var(--accent)}
+    .num{
+      width:100%;
+      background:#0e141d;
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:13px;
+      padding:12px;
+      text-align:center;
+      font-weight:700;
+      font-size:1.05rem;
+    }
+    .quick{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:12px;
+    }
+    .chip{
+      border:1px solid rgba(255,255,255,.08);
+      background:#202a39;
+      color:var(--text);
+      border-radius:999px;
+      padding:9px 13px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .chip.active{
+      background:rgba(88,166,255,.16);
+      border-color:rgba(88,166,255,.55);
+      color:#cfe8ff;
+    }
+    .preset-row{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:9px;
+      margin-top:12px;
+    }
+    .preset-list{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:10px;
+    }
+    .preset{
+      display:inline-flex;
+      align-items:center;
+      overflow:hidden;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.08);
+      background:#202a39;
+    }
+    .preset button{
+      border:0;
+      background:transparent;
+      color:var(--text);
+      padding:9px 11px;
+      cursor:pointer;
+    }
+    .preset .remove{color:var(--muted);padding-left:5px}
+    .grid2{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .setting{
+      background:rgba(255,255,255,.035);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:15px;
+      padding:12px;
+    }
+    .setting label{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      font-weight:650;
+      margin-bottom:8px;
+    }
+    .setting small{color:var(--muted);line-height:1.35;display:block}
+    .toggle{
+      appearance:none;
+      width:48px;height:28px;border-radius:999px;
+      background:#3b4657;
+      position:relative;
+      cursor:pointer;
+      flex:0 0 auto;
+    }
+    .toggle::after{
+      content:"";
+      width:22px;height:22px;border-radius:50%;
+      background:white;
+      position:absolute;top:3px;left:3px;
+      transition:.18s;
+    }
+    .toggle:checked{background:#278a58}
+    .toggle:checked::after{left:23px}
+    .select{
+      width:100%;
+      margin-top:8px;
+      background:#0e141d;color:var(--text);
+      border:1px solid var(--border);
+      border-radius:11px;
+      padding:10px;
+    }
+    .help{
+      color:var(--muted);
+      font-size:.82rem;
+      line-height:1.45;
+      margin-top:12px;
+    }
+    .banner{
+      display:none;
+      margin-bottom:12px;
+      padding:12px 14px;
+      border-radius:14px;
+      background:rgba(242,204,96,.12);
+      border:1px solid rgba(242,204,96,.35);
+      color:#f8dda0;
+      font-size:.88rem;
+      line-height:1.4;
+    }
+    .banner.show{display:block}
+    .flash{animation:flash .42s ease}
+    @keyframes flash{
+      0%,100%{box-shadow:var(--shadow)}
+      45%{box-shadow:0 0 0 4px rgba(255,123,114,.35),0 0 45px rgba(255,123,114,.35)}
+    }
+    @media (max-width:560px){
+      .grid2{grid-template-columns:1fr}
+      .target-controls{grid-template-columns:1fr 100px}
+      .metrics{grid-template-columns:1fr 1fr}
+      .metrics .metric:last-child{grid-column:1/-1}
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="brand">
+        <h1>Torque Angle Gauge</h1>
+        <p>Phone Z-axis gyroscope</p>
+      </div>
+      <div class="status">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Sensor off</span>
+      </div>
+    </div>
+
+    <div id="banner" class="banner"></div>
+
+    <section id="gaugeCard" class="card gauge">
+      <div id="ring" class="ring">
+        <div class="readout">
+          <div class="angle"><span id="angleValue">0.0</span><span class="degree">°</span></div>
+          <div class="targetline">Target <strong><span id="targetDisplay">90</span>°</strong></div>
+          <div id="remainingText" class="remaining">90.0° remaining</div>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><span>Z gyro rate</span><strong id="rateValue">0.0°/s</strong></div>
+        <div class="metric"><span>Bias</span><strong id="biasValue">0.00°/s</strong></div>
+        <div class="metric"><span>Sample interval</span><strong id="sampleValue">—</strong></div>
+        <div class="metric"><span>Sensor source</span><strong id="sourceValue">—</strong></div>
+      </div>
+
+      <div class="actions">
+        <button id="enableBtn" class="btn primary">Enable Sensor</button>
+        <button id="zeroBtn" class="btn zero" disabled>Zero & Calibrate</button>
+      </div>
+    </section>
+
+    <section class="card section">
+      <h2>Target angle</h2>
+      <div class="target-controls">
+        <input id="targetSlider" type="range" min="1" max="360" step="1" value="90" />
+        <input id="targetInput" class="num" type="number" min="1" max="720" step="1" value="90" inputmode="numeric" />
+      </div>
+
+      <div class="quick">
+        <button class="chip" data-angle="45">45°</button>
+        <button class="chip" data-angle="60">60°</button>
+        <button class="chip active" data-angle="90">90°</button>
+        <button class="chip" data-angle="120">120°</button>
+        <button class="chip" data-angle="180">180°</button>
+      </div>
+
+      <div class="preset-row">
+        <input id="presetName" class="num" type="text" maxlength="24" placeholder="Preset name, e.g. BMW 90°" />
+        <button id="savePresetBtn" class="btn">Save preset</button>
+      </div>
+      <div id="presetList" class="preset-list"></div>
+    </section>
+
+    <section class="card section">
+      <h2>Alerts</h2>
+      <div class="grid2">
+        <div class="setting">
+          <label>
+            <span>Vibration</span>
+            <input id="vibrationToggle" class="toggle" type="checkbox" checked />
+          </label>
+          <small>Pulse frequency increases as the target approaches.</small>
+        </div>
+
+        <div class="setting">
+          <label>
+            <span>Beep</span>
+            <input id="beepToggle" class="toggle" type="checkbox" checked />
+          </label>
+          <small>Beep pitch and repetition rate increase near the target.</small>
+        </div>
+
+        <div class="setting">
+          <label>
+            <span>Alert profile</span>
+          </label>
+          <select id="alertProfile" class="select">
+            <option value="gentle">Gentle</option>
+            <option value="normal" selected>Normal</option>
+            <option value="aggressive">Aggressive</option>
+          </select>
+          <small>Controls when progressive alerts begin.</small>
+        </div>
+
+        <div class="setting">
+          <label>
+            <span>Direction</span>
+          </label>
+          <select id="directionMode" class="select">
+            <option value="absolute" selected>Either direction</option>
+            <option value="positive">Positive only</option>
+            <option value="negative">Negative only</option>
+          </select>
+          <small>Use either direction unless you need signed rotation.</small>
+        </div>
+      </div>
+
+      <p class="help">
+        Keep the phone rigidly mounted with its Z axis aligned to the socket axis. Hold still during calibration.
+        Sensor access usually requires HTTPS or localhost. The page must remain active while measuring.
+      </p>
+    </section>
+  </main>
+
+<script>
+(() => {
+  "use strict";
+
+  const els = {
+    statusDot: document.getElementById("statusDot"),
+    statusText: document.getElementById("statusText"),
+    banner: document.getElementById("banner"),
+    gaugeCard: document.getElementById("gaugeCard"),
+    ring: document.getElementById("ring"),
+    angleValue: document.getElementById("angleValue"),
+    targetDisplay: document.getElementById("targetDisplay"),
+    remainingText: document.getElementById("remainingText"),
+    rateValue: document.getElementById("rateValue"),
+    biasValue: document.getElementById("biasValue"),
+    sampleValue: document.getElementById("sampleValue"),
+    sourceValue: document.getElementById("sourceValue"),
+    enableBtn: document.getElementById("enableBtn"),
+    zeroBtn: document.getElementById("zeroBtn"),
+    targetSlider: document.getElementById("targetSlider"),
+    targetInput: document.getElementById("targetInput"),
+    presetName: document.getElementById("presetName"),
+    savePresetBtn: document.getElementById("savePresetBtn"),
+    presetList: document.getElementById("presetList"),
+    vibrationToggle: document.getElementById("vibrationToggle"),
+    beepToggle: document.getElementById("beepToggle"),
+    alertProfile: document.getElementById("alertProfile"),
+    directionMode: document.getElementById("directionMode")
+  };
+
+  const state = {
+    enabled: false,
+    calibrated: false,
+    calibrating: false,
+    angle: 0,
+    previousRate: 0,
+    previousTimestamp: null,
+    bias: 0,
+    target: 90,
+    rawRate: 0,
+    lastAlertAt: 0,
+    reached: false,
+    audioContext: null,
+    wakeLock: null,
+    calibrationSamples: [],
+    calibrationTimer: null,
+    sensorSource: "",
+    gyroSensor: null,
+    lastSensorSampleAt: 0,
+    presets: []
+  };
+
+  const SETTINGS_KEY = "torqueAngleGaugeSettingsV1";
+  const PRESETS_KEY = "torqueAngleGaugePresetsV1";
+
+  function showBanner(message) {
+    els.banner.textContent = message;
+    els.banner.classList.toggle("show", Boolean(message));
+  }
+
+  function setStatus(text, mode = "") {
+    els.statusText.textContent = text;
+    els.statusDot.className = "dot" + (mode ? " " + mode : "");
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function signedMeasuredAngle() {
+    if (els.directionMode.value === "positive") return Math.max(0, state.angle);
+    if (els.directionMode.value === "negative") return Math.max(0, -state.angle);
+    return Math.abs(state.angle);
+  }
+
+  function updateUI() {
+    const measured = signedMeasuredAngle();
+    const remaining = state.target - measured;
+    const progress = clamp(measured / state.target, 0, 1);
+    const displayAngle = els.directionMode.value === "absolute" ? measured : state.angle;
+
+    els.angleValue.textContent = displayAngle.toFixed(1);
+    els.targetDisplay.textContent = String(state.target);
+    els.ring.style.setProperty("--progress", `${progress * 360}deg`);
+
+    if (remaining > 0) {
+      els.remainingText.textContent = `${remaining.toFixed(1)}° remaining`;
+      els.remainingText.className = "remaining" + (progress >= 0.8 ? " warn" : progress >= 0.5 ? " good" : "");
+    } else {
+      els.remainingText.textContent = `${Math.abs(remaining).toFixed(1)}° over target`;
+      els.remainingText.className = "remaining done";
+    }
+
+    els.rateValue.textContent = `${state.rawRate.toFixed(1)}°/s`;
+    els.biasValue.textContent = `${state.bias.toFixed(2)}°/s`;
+  }
+
+  function saveSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      target: state.target,
+      vibration: els.vibrationToggle.checked,
+      beep: els.beepToggle.checked,
+      profile: els.alertProfile.value,
+      direction: els.directionMode.value
+    }));
+  }
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+      if (saved.target) setTarget(saved.target, false);
+      if (typeof saved.vibration === "boolean") els.vibrationToggle.checked = saved.vibration;
+      if (typeof saved.beep === "boolean") els.beepToggle.checked = saved.beep;
+      if (saved.profile) els.alertProfile.value = saved.profile;
+      if (saved.direction) els.directionMode.value = saved.direction;
+    } catch (_) {}
+  }
+
+  function setTarget(value, persist = true) {
+    const target = clamp(Math.round(Number(value) || 1), 1, 720);
+    state.target = target;
+    els.targetInput.value = String(target);
+    els.targetSlider.value = String(Math.min(target, 360));
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.classList.toggle("active", Number(chip.dataset.angle) === target);
+    });
+    state.reached = false;
+    if (persist) saveSettings();
+    updateUI();
+  }
+
+  function loadPresets() {
+    try {
+      state.presets = JSON.parse(localStorage.getItem(PRESETS_KEY) || "[]");
+      if (!Array.isArray(state.presets)) state.presets = [];
+    } catch (_) {
+      state.presets = [];
+    }
+    renderPresets();
+  }
+
+  function savePresets() {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(state.presets));
+    renderPresets();
+  }
+
+  function renderPresets() {
+    els.presetList.innerHTML = "";
+    state.presets.forEach((preset, index) => {
+      const wrap = document.createElement("div");
+      wrap.className = "preset";
+
+      const use = document.createElement("button");
+      use.textContent = `${preset.name} · ${preset.angle}°`;
+      use.addEventListener("click", () => setTarget(preset.angle));
+
+      const remove = document.createElement("button");
+      remove.className = "remove";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Delete ${preset.name}`);
+      remove.addEventListener("click", () => {
+        state.presets.splice(index, 1);
+        savePresets();
+      });
+
+      wrap.append(use, remove);
+      els.presetList.appendChild(wrap);
+    });
+  }
+
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        state.wakeLock = await navigator.wakeLock.request("screen");
+      }
+    } catch (_) {}
+  }
+
+  function processGyroSample(rateDegPerSec, timestampMs, sourceName) {
+    if (!Number.isFinite(rateDegPerSec)) return;
+
+    state.rawRate = rateDegPerSec;
+    state.lastSensorSampleAt = performance.now();
+    state.sensorSource = sourceName;
+    els.sourceValue.textContent = sourceName;
+
+    if (state.calibrating) {
+      state.calibrationSamples.push(rateDegPerSec);
+
+      if (state.calibrationSamples.length >= 50) {
+        clearTimeout(state.calibrationTimer);
+
+        const samples = [...state.calibrationSamples].sort((a,b) => a-b);
+        const trim = Math.floor(samples.length * 0.1);
+        const trimmed = samples.slice(trim, samples.length - trim);
+        state.bias = trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length;
+
+        state.calibrating = false;
+        state.calibrated = true;
+        state.angle = 0;
+        state.previousRate = 0;
+        state.previousTimestamp = null;
+        state.reached = false;
+
+        els.zeroBtn.disabled = false;
+        els.zeroBtn.textContent = "Zero & Calibrate";
+        setStatus("Ready", "live");
+        showBanner("");
+        updateUI();
+      }
+      return;
+    }
+
+    if (!state.calibrated) {
+      updateUI();
+      return;
+    }
+
+    if (state.previousTimestamp !== null) {
+      const dt = (timestampMs - state.previousTimestamp) / 1000;
+
+      if (dt > 0 && dt < 0.25) {
+        let correctedRate = rateDegPerSec - state.bias;
+
+        const deadband = 0.18;
+        if (Math.abs(correctedRate) < deadband) correctedRate = 0;
+
+        state.angle += ((state.previousRate + correctedRate) / 2) * dt;
+        state.previousRate = correctedRate;
+
+        els.sampleValue.textContent = `${Math.round(dt * 1000)} ms`;
+        processAlerts();
+      }
+    }
+
+    state.previousTimestamp = timestampMs;
+    updateUI();
+  }
+
+  function handleMotion(event) {
+    if (!event.rotationRate) return;
+
+    const alpha = Number(event.rotationRate.alpha);
+    if (!Number.isFinite(alpha)) return;
+
+    const timestamp = Number.isFinite(event.timeStamp)
+      ? event.timeStamp
+      : performance.now();
+
+    processGyroSample(alpha, timestamp, "DeviceMotion α");
+  }
+
+  async function startGenericGyroscope() {
+    if (!("Gyroscope" in window)) return false;
+
+    try {
+      if (navigator.permissions?.query) {
+        try {
+          const permission = await navigator.permissions.query({ name: "gyroscope" });
+          if (permission.state === "denied") {
+            throw new Error("Gyroscope permission is blocked in this site's browser settings.");
+          }
+        } catch (permissionError) {
+          if (/blocked|denied/i.test(permissionError.message)) throw permissionError;
+        }
+      }
+
+      const gyro = new Gyroscope({ frequency: 60, referenceFrame: "device" });
+
+      gyro.addEventListener("reading", () => {
+        // Generic Sensor API reports radians/second.
+        const zDegPerSec = gyro.z * 180 / Math.PI;
+        processGyroSample(zDegPerSec, performance.now(), "Gyroscope Z");
+      });
+
+      gyro.addEventListener("error", event => {
+        setStatus("Sensor error", "bad");
+        showBanner(`Gyroscope error: ${event.error?.message || "unknown error"}`);
+      });
+
+      gyro.start();
+      state.gyroSensor = gyro;
+
+      await new Promise((resolve, reject) => {
+        const startedAt = performance.now();
+        const check = () => {
+          if (state.lastSensorSampleAt > startedAt) return resolve();
+          if (performance.now() - startedAt > 1800) {
+            try { gyro.stop(); } catch (_) {}
+            state.gyroSensor = null;
+            return reject(new Error("The direct gyroscope API started but delivered no readings."));
+          }
+          setTimeout(check, 60);
+        };
+        check();
+      });
+
+      return true;
+    } catch (error) {
+      console.warn("Generic Gyroscope unavailable:", error);
+      return false;
+    }
+  }
+
+  async function startDeviceMotionFallback() {
+    if (typeof DeviceMotionEvent === "undefined") {
+      throw new Error("This browser does not expose phone motion sensors.");
+    }
+
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      const result = await DeviceMotionEvent.requestPermission();
+      if (result !== "granted") {
+        throw new Error("Motion sensor permission was denied.");
+      }
+    }
+
+    const before = state.lastSensorSampleAt;
+    window.addEventListener("devicemotion", handleMotion, { passive: true });
+
+    await new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const check = () => {
+        if (state.lastSensorSampleAt > before) return resolve();
+        if (performance.now() - startedAt > 2200) {
+          window.removeEventListener("devicemotion", handleMotion);
+          return reject(new Error(
+            "The browser allowed the request but supplied no gyroscope readings. " +
+            "Use HTTPS, allow Motion sensors in site settings, and try Chrome or Samsung Internet."
+          ));
+        }
+        setTimeout(check, 80);
+      };
+      check();
+    });
+
+    return true;
+  }
+
+  async function enableSensor() {
+    els.enableBtn.disabled = true;
+    els.enableBtn.textContent = "Requesting sensor…";
+    setStatus("Requesting access");
+    showBanner("");
+
+    try {
+      if (!window.isSecureContext && location.protocol !== "file:") {
+        throw new Error("Motion sensor access requires HTTPS or localhost.");
+      }
+
+      // Creating/resuming audio here preserves the user gesture needed for beeps.
+      try {
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        await state.audioContext.resume();
+      } catch (_) {}
+
+      let started = await startGenericGyroscope();
+
+      if (!started) {
+        started = await startDeviceMotionFallback();
+      }
+
+      if (!started) {
+        throw new Error("No usable gyroscope API was found.");
+      }
+
+      state.enabled = true;
+      els.enableBtn.textContent = "Sensor Enabled";
+      els.zeroBtn.disabled = false;
+      setStatus("Sensor active", "live");
+      showBanner("Sensor readings detected. Mount the phone rigidly, hold it still, then press Zero & Calibrate.");
+      await requestWakeLock();
+    } catch (error) {
+      state.enabled = false;
+      els.enableBtn.disabled = false;
+      els.enableBtn.textContent = "Try Again";
+      els.zeroBtn.disabled = true;
+      setStatus("Sensor unavailable", "bad");
+      showBanner(
+        error.message +
+        " On Android: open the page through HTTPS, then check the browser's Site settings → Motion sensors."
+      );
+    }
+  }
+
+  function beginCalibration() {
+    if (!state.enabled || state.calibrating) return;
+
+    state.calibrating = true;
+    state.calibrated = false;
+    state.calibrationSamples = [];
+    state.angle = 0;
+    state.previousRate = 0;
+    state.previousTimestamp = null;
+    state.reached = false;
+
+    els.zeroBtn.disabled = true;
+    els.zeroBtn.textContent = "Calibrating… keep still";
+    setStatus("Calibrating");
+    showBanner("Keep the phone completely still while 50 gyro samples are collected.");
+    updateUI();
+
+    clearTimeout(state.calibrationTimer);
+    state.calibrationTimer = setTimeout(() => {
+      if (!state.calibrating) return;
+
+      state.calibrating = false;
+      state.calibrated = false;
+      els.zeroBtn.disabled = false;
+      els.zeroBtn.textContent = "Zero & Calibrate";
+      setStatus("No sensor samples", "bad");
+      showBanner(
+        `Calibration stopped because only ${state.calibrationSamples.length} gyro samples arrived. ` +
+        "The sensor stream is inactive or being blocked by the browser."
+      );
+    }, 3500);
+  }
+
+  function profileConfig() {
+    const profile = els.alertProfile.value;
+    if (profile === "gentle") return { start: 0.70, minInterval: 260, maxInterval: 1000 };
+    if (profile === "aggressive") return { start: 0.35, minInterval: 90, maxInterval: 600 };
+    return { start: 0.55, minInterval: 150, maxInterval: 800 };
+  }
+
+  function beep(progress, duration = 55) {
+    if (!els.beepToggle.checked || !state.audioContext) return;
+    const ctx = state.audioContext;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    const frequency = 500 + progress * 1450;
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration / 1000);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration / 1000 + 0.03);
+  }
+
+  function vibrate(pattern) {
+    if (els.vibrationToggle.checked && navigator.vibrate) {
+      navigator.vibrate(pattern);
+    }
+  }
+
+  function processAlerts() {
+    const measured = signedMeasuredAngle();
+    const progress = measured / state.target;
+    const now = performance.now();
+    const cfg = profileConfig();
+
+    if (progress >= 1 && !state.reached) {
+      state.reached = true;
+      vibrate([120, 70, 120, 70, 220]);
+      beep(1, 180);
+      setTimeout(() => beep(1, 180), 230);
+      els.gaugeCard.classList.remove("flash");
+      void els.gaugeCard.offsetWidth;
+      els.gaugeCard.classList.add("flash");
+      return;
+    }
+
+    if (progress < cfg.start || state.reached) return;
+
+    const normalized = clamp((progress - cfg.start) / (1 - cfg.start), 0, 1);
+    const interval = cfg.maxInterval - normalized * (cfg.maxInterval - cfg.minInterval);
+
+    if (now - state.lastAlertAt >= interval) {
+      state.lastAlertAt = now;
+      vibrate(normalized > 0.85 ? 55 : normalized > 0.5 ? 35 : 20);
+      beep(normalized, normalized > 0.85 ? 75 : 45);
+    }
+  }
+
+  els.enableBtn.addEventListener("click", enableSensor);
+  els.zeroBtn.addEventListener("click", beginCalibration);
+
+  els.targetSlider.addEventListener("input", e => setTarget(e.target.value));
+  els.targetInput.addEventListener("change", e => setTarget(e.target.value));
+  els.targetInput.addEventListener("input", e => {
+    if (e.target.value !== "") setTarget(e.target.value);
+  });
+
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => setTarget(chip.dataset.angle));
+  });
+
+  els.savePresetBtn.addEventListener("click", () => {
+    const name = els.presetName.value.trim() || `${state.target}° preset`;
+    state.presets.push({ name, angle: state.target });
+    state.presets.sort((a,b) => a.angle - b.angle);
+    els.presetName.value = "";
+    savePresets();
+  });
+
+  [els.vibrationToggle, els.beepToggle, els.alertProfile, els.directionMode].forEach(control => {
+    control.addEventListener("change", () => {
+      state.reached = false;
+      saveSettings();
+      updateUI();
+    });
+  });
+
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && state.enabled) {
+      await requestWakeLock();
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (state.wakeLock) state.wakeLock.release().catch(() => {});
+    if (state.gyroSensor) {
+      try { state.gyroSensor.stop(); } catch (_) {}
+    }
+  });
+
+  loadSettings();
+  loadPresets();
+  updateUI();
+
+  if (!window.isSecureContext && location.protocol !== "file:" && location.hostname !== "localhost") {
+    showBanner("This page is not in a secure context. Phone motion sensors require HTTPS or localhost.");
+  } else if (location.protocol === "file:") {
+    showBanner("This file is opened directly from storage. Many mobile browsers block gyroscope access for local files; HTTPS hosting is more reliable.");
+  }
+})();
+</script>
+</body>
+</html>
